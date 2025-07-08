@@ -1,49 +1,107 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Teachable Machine Image Prediction</title>
+    <title>Teachable Machine Webcam and Image Prediction</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest"></script>
 </head>
 <body>
-    <h1>Teachable Machine Image Prediction</h1>
-    <input type="file" id="file-upload" accept="image/*" />
-    <button onclick="predict()">Predict</button>
-    <div id="result"></div>
+    <h1>Teachable Machine Webcam and Image Prediction</h1>
+
+    <h2>Webcam Prediction</h2>
+    <button type="button" onclick="initWebcam()">Start Webcam</button>
+    <button type="button" onclick="predictWebcam()">Predict from Webcam</button>
+    <div id="webcam-container"></div>
+
+    <h2>Image Upload Prediction</h2>
+    <input type="file" id="imageUpload" accept="image/*">
+    <button type="button" onclick="predictImage()">Predict from Image</button>
+    <div id="imagePreview" style="margin-top: 10px;"></div>
+
+    <div id="result" style="margin-top: 20px;"></div>
 
     <script>
-        let model;
+        let model, webcam, maxPredictions;
+
         const URL = "./"; // If model.json and metadata.json are in the same folder
 
-        async function loadModel() {
+        async function initWebcam() {
             const modelURL = URL + "model.json";
             const metadataURL = URL + "metadata.json";
+
             model = await tmImage.load(modelURL, metadataURL);
-            console.log("Model Loaded!");
+            maxPredictions = model.getTotalClasses();
+
+            const flip = true; // Flip webcam
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup(); // Request access
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+            console.log("✅ Webcam started and model loaded");
+            document.getElementById("result").innerHTML = "<p style='color:green;'>✅ Webcam and model ready. Click Predict from Webcam to see results.</p>";
         }
 
-        async function predict() {
-            const fileInput = document.getElementById("file-upload");
-            if (fileInput.files.length === 0) {
-                alert("Please upload an image first.");
+        async function loop() {
+            webcam.update();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predictWebcam() {
+            if (!model || !webcam) {
+                document.getElementById("result").innerHTML = "<p style='color:red;'>Please start the webcam first.</p>";
+                return;
+            }
+            const prediction = await model.predict(webcam.canvas);
+            displayPrediction(prediction);
+        }
+
+        document.getElementById('imageUpload').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const previewContainer = document.getElementById('imagePreview');
+                        previewContainer.innerHTML = ''; // Clear previous preview
+                        img.style.maxWidth = '200px'; // Set a max width for the preview
+                        previewContainer.appendChild(img);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        async function predictImage() {
+             if (!model) {
+                const modelURL = URL + "model.json";
+                const metadataURL = URL + "metadata.json";
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+             }
+
+            const imgElement = document.querySelector('#imagePreview img');
+            if (!imgElement) {
+                document.getElementById("result").innerHTML = "<p style='color:red;'>Please upload an image first.</p>";
                 return;
             }
 
-            const image = document.createElement("img");
-            image.src = URL.createObjectURL(fileInput.files[0]);
-            await new Promise((resolve) => {
-                image.onload = resolve;
-            });
+            const prediction = await model.predict(imgElement);
+            displayPrediction(prediction);
+        }
 
-            const predictions = await model.predict(image);
+        function displayPrediction(prediction) {
             let resultText = "<h3>Predictions:</h3>";
-            predictions.forEach(pred => {
+            prediction.forEach(pred => {
                 resultText += `${pred.className}: ${(pred.probability * 100).toFixed(2)}%<br>`;
             });
             document.getElementById("result").innerHTML = resultText;
         }
-
-        loadModel();
     </script>
 </body>
 </html>
